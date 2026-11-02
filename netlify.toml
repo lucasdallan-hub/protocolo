@@ -1,4 +1,13 @@
 [build]
   base = "."
-  command = "python3 tools/build_html.py"
+  command = "python3 tools/build_html.py --cloud"
   publish = "docs"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true

@@ -1,6 +1,10 @@
 from pathlib import Path
 import argparse,base64,re
 root=Path(__file__).resolve().parent.parent/'static'
+parser=argparse.ArgumentParser(description='Gerar o sistema Folha')
+parser.add_argument('--output',type=Path,default=root.parent/'docs/index.html')
+parser.add_argument('--cloud',action='store_true',help='Login e dados compartilhados via Netlify/Supabase')
+args=parser.parse_args()
 html=(root/'index.html').read_text()
 css=(root/'style.css').read_text()
 app=(root/'app.js').read_text()
@@ -71,11 +75,19 @@ document.addEventListener('click',async event=>{
  }catch(error){toast(error.message);}
 });
 '''
+if args.cloud:
+    # Reuse PDF parsing, but require authenticated storage and server-side records.
+    extraction=adapter[adapter.index(" if(url==='/api/extract'){"):adapter.index("\n throw new Error('Operação indisponível.');")]
+    extraction=extraction.replace("const file_id=crypto.randomUUID().replaceAll('-','');", "const ticket=await cloudRequest('/api/uploads',{method:'POST',body:JSON.stringify({size:file.size})}); const file_id=ticket.file_id;")
+    extraction=extraction.replace("await localStore('files','readwrite',(store,done)=>{store.put({id:file_id,blob:file,name:file.name});done(true);});", "const sent=await fetch(ticket.url,{method:'PUT',headers:{'Content-Type':'application/pdf'},body:file}); if(!sent.ok)throw new Error('Não foi possível guardar o PDF. Tente novamente.');")
+    adapter="async function request(url,options={}){\n"+extraction+"\n return cloudRequest(url,options);\n}\n"
 app=re.sub(r'async function request\(url, options\) \{[^\n]+\}',lambda m:adapter,app,count=1)
 app=app.replace('↗ Abrir folha PDF anexada','↓ Baixar folha PDF anexada')
 start=app.index("$('#pdf').addEventListener('change'")
 end=app.index("form.addEventListener('submit'",start)
 app=app[:start]+app[end:]
+if args.cloud:
+    app=app[:app.rindex('refresh().catch')]
 app+='\n'+(root/'batch.js').read_text()
 html=html.replace('id="pdf" type="file"','id="pdf" type="file" multiple')
 html=html.replace('Importar cartão ponto em PDF','Importar um ou vários PDFs')
@@ -85,20 +97,29 @@ html=html.replace('Importar primeira folha','Importar folhas')
 html=html.replace('Imprime o cartão ponto','Importe os cartões ponto')
 html=html.replace('</body>',(root/'batch.html').read_text()+'</body>')
 css+='\n'+(root/'batch.css').read_text()
+if args.cloud:
+    html=html.replace('<body>','<body class="auth-pending">')
+    html=html.replace('</body>',(root/'auth.html').read_text()+'</body>')
+    old='<div class="user"><span class="user-avatar">DP</span><span>Área administrativa<small>Controle de documentos</small></span></div>'
+    new='<div class="user"><span class="user-avatar" id="current-user-avatar"></span><span><span id="current-user-name"></span><small id="current-user-role"></small></span></div><div class="account-actions"><button class="text-button" id="users-open" hidden>Usuários</button><button class="text-button" id="password-open">Minha senha</button><button class="text-button" id="logout">Sair</button></div>'
+    html=html.replace(old,new)
+    html=html.replace('Armazenamento local','Dados da equipe').replace('Seus registros neste ambiente','Acesso com conta autorizada')
+    app=app.replace("form.reset(); fileId=''", "form.reset(); form.elements.received_by.value=currentUser?.name||''; fileId=''")
+    app=app.replace("$('#batch-responsible').value=''", "$('#batch-responsible').value=currentUser?.name||''")
+    app+='\n'+(root/'auth.js').read_text()
+    css+='\n'+(root/'auth.css').read_text()
 html=html.replace('<link rel="stylesheet" href="/style.css">','<style>'+css+'</style>')
 html=html.replace('<script src="/app.js" defer></script>','')
 html=html.replace('href="/"','href="#"')
 html=html.replace('Seus registros neste ambiente','Salvo somente neste navegador')
 html=html.replace('Controle de documentos','Versão HTML · offline')
-html=html.replace('Feito para simplificar o departamento pessoal.','Dados salvos neste navegador. Exporte o CSV para guardar uma cópia dos registros.')
+html=html.replace('Feito para simplificar o departamento pessoal.', 'Folhas e protocolos compartilhados com sua equipe.' if args.cloud else 'Dados salvos neste navegador. Exporte o CSV para guardar uma cópia dos registros.')
 lib=(root.parent/'tools/vendor/pdf.min.js').read_text()
 worker=base64.b64encode((root.parent/'tools/vendor/pdf.worker.min.js').read_bytes()).decode()
 bootstrap="pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(new Blob([Uint8Array.from(atob('"+worker+"'),c=>c.charCodeAt(0))],{type:'text/javascript'}));"
 def script(text):return '<script>'+text.replace('</script','<\\/script')+'</script>'
 html=html.replace('</body>',script(lib)+script(bootstrap)+script(app)+'</body>')
-parser=argparse.ArgumentParser(description='Gerar HTML independente do sistema Folha')
-parser.add_argument('--output',type=Path,default=root.parent/'docs/index.html')
-output=parser.parse_args().output
+output=args.output
 output.parent.mkdir(parents=True,exist_ok=True)
 output.write_text(html,encoding='utf-8')
 print('HTML gerado:',output,'—',output.stat().st_size,'bytes')
