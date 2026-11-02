@@ -14,6 +14,14 @@ Para gerar novamente o HTML: `python tools/build_html.py`. O resultado fica em `
 
 Para hospedar a versão HTML no Netlify, envie a pasta `docs`. No GitHub Pages, configure a publicação a partir da branch `main`, pasta `/docs`. A publicação exige ativar a hospedagem no serviço escolhido; apenas enviar o código ao GitHub não publica o site.
 
+### Publicação pelo GitHub no Netlify
+
+Conecte o repositório `lucasdallan-hub/protocolo` ao Netlify e use a branch `main`. O arquivo `netlify.toml` define o diretório base como a raiz do repositório, executa `python3 tools/build_html.py` e publica somente a pasta `docs`, que contém o `index.html` independente. Não configure `server.py` como comando de build nem use a pasta `static` como diretório de publicação: ela depende do servidor Python e não é a versão HTML independente.
+
+Se o site já estiver conectado, inicie um novo deploy da branch `main` após receber a atualização. Confira no log que o diretório publicado é `docs`. Se houver configuração antiga de diretório base ou de pacote no painel, remova-a para usar a raiz do repositório. Para publicação manual, envie o conteúdo de `docs` com `index.html` na raiz do pacote.
+
+O Netlify hospeda esta versão estática; não executa o servidor Python nem sincroniza os registros locais entre dispositivos.
+
 ## Executar
 
 Requisitos: Python 3.10+ e `pdftotext` (pacote `poppler-utils` no Debian/Ubuntu). Não há dependências Python externas nem serviços de banco para instalar.

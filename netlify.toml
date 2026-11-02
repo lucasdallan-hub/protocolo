@@ -1,0 +1,4 @@
+[build]
+  base = "."
+  command = "python3 tools/build_html.py"
+  publish = "docs"
